@@ -1,4 +1,4 @@
-package com.example.pokemonlab5.network
+package com.example.pokemonlab5.data.network
 
 data class PokemonListResponse(
     val count: Int,

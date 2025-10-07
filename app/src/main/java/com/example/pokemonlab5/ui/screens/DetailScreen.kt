@@ -1,7 +1,6 @@
 package com.example.pokemonlab5.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -17,68 +16,41 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.pokemonlab5.network.PokemonBasic
-import com.example.pokemonlab5.network.PokemonDetail
-import com.example.pokemonlab5.network.RetrofitClient
-import kotlinx.coroutines.launch
-import java.nio.file.WatchEvent
+import com.example.pokemonlab5.data.network.PokemonDetail
+import com.example.pokemonlab5.ui.viewmodel.MainViewModel
+import com.example.pokemonlab5.ui.viewmodel.PokemonDetailUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(
+    viewModel: MainViewModel,
     pokemonId: Int,
     onBack: () -> Unit = {}
 ) {
-    var pokemon by remember { mutableStateOf<PokemonDetail?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+    val uiState by viewModel.pokemonDetailState.collectAsState()
 
-    fun loadPokemonDetail() {
-        scope.launch {
-            isLoading = true
-            error = null
-            try {
-                val response = RetrofitClient.apiService.getPokemonDetail(pokemonId)
-                pokemon = response
-            } catch (e: Exception) {
-                error = "Error al cargar detalles: ${e.message}"
-                e.printStackTrace()
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    // Llamada a la API
     LaunchedEffect(pokemonId) {
-        loadPokemonDetail()
+        viewModel.loadPokemonDetail(pokemonId)
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        pokemon?.name?.replaceFirstChar { it.uppercase() } ?: "Pokémon",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.Default.ArrowBack,
-                            contentDescription = "Volver",
-                            tint = Color.White
+                            contentDescription = null,
+                            tint = Color.Black
                         )
                     }
                 },
                 actions = {
-                    if (error != null) {
-                        IconButton(onClick = { loadPokemonDetail() }) {
+                    if (uiState is PokemonDetailUiState.Error) {
+                        IconButton(onClick = { viewModel.loadPokemonDetail(pokemonId) }) {
                             Icon(
                                 Icons.Default.Refresh,
                                 contentDescription = "Reintentar",
@@ -89,8 +61,7 @@ fun DetailScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFFFCB05),
-                    titleContentColor = Color.Black,
-                    navigationIconContentColor = Color.White
+                    navigationIconContentColor = Color.Black
                 )
             )
         }
@@ -100,42 +71,20 @@ fun DetailScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when {
-                isLoading -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = Color(0xFFCC0000))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Cargando detalles...", color = Color.Gray)
-                    }
+            when (val state = uiState) {
+                is PokemonDetailUiState.Loading -> {
+                    LoadingContent()
                 }
 
-                error != null -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = error!!,
-                            color = Color.Red,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                        Button(
-                            onClick = { loadPokemonDetail() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF003A70)
-                            )
-                        ) {
-                            Text("Reintentar", color = Color.White)
-                        }
-                    }
+                is PokemonDetailUiState.Error -> {
+                    ErrorContent(
+                        message = state.message,
+                        onRetry = { viewModel.loadPokemonDetail(pokemonId) }
+                    )
                 }
 
-                pokemon != null -> {
-                    DetailContent(pokemon = pokemon!!)
+                is PokemonDetailUiState.Success -> {
+                    DetailContent(pokemon = state.pokemon)
                 }
             }
         }
@@ -143,7 +92,47 @@ fun DetailScreen(
 }
 
 @Composable
-fun DetailContent(pokemon: PokemonDetail) {
+private fun LoadingContent() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(color = Color(0xFFCC0000))
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Cargando detalles...", color = Color.Gray)
+    }
+}
+
+@Composable
+private fun ErrorContent(
+    message: String,
+    onRetry: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = message,
+            color = Color.Red,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(16.dp)
+        )
+        Button(
+            onClick = onRetry,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF003A70)
+            )
+        ) {
+            Text("Reintentar", color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun DetailContent(pokemon: PokemonDetail) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -151,10 +140,10 @@ fun DetailContent(pokemon: PokemonDetail) {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Info
+        // Info Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF3D7DCA)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF66A4EF)),
             shape = RoundedCornerShape(12.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
@@ -164,13 +153,14 @@ fun DetailContent(pokemon: PokemonDetail) {
             ) {
                 Text(
                     text = pokemon.name.replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
                     text = "#${pokemon.id.toString().padStart(3, '0')}",
                     style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF003A70)
                 )
 
@@ -188,12 +178,15 @@ fun DetailContent(pokemon: PokemonDetail) {
 
                 Text(
                     text = "Tipos:",
+                    style = MaterialTheme.typography.titleMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
                 pokemon.types.forEach { type ->
                     Text(
-                        text ="• ${type.type.name.replaceFirstChar { it.uppercase() }}",
+                        text = "• ${type.type.name.replaceFirstChar { it.uppercase() }}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF003A70)
                     )
                 }
@@ -202,7 +195,7 @@ fun DetailContent(pokemon: PokemonDetail) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Sprites
+        // Normal Sprites
         Text(
             text = "Normal",
             style = MaterialTheme.typography.headlineSmall,
@@ -227,6 +220,7 @@ fun DetailContent(pokemon: PokemonDetail) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // Shiny Sprites
         Text(
             text = "Shiny",
             style = MaterialTheme.typography.headlineSmall,
@@ -255,31 +249,31 @@ fun DetailContent(pokemon: PokemonDetail) {
 }
 
 @Composable
-fun InfoItem(label: String, value: String) {
+private fun InfoItem(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.titleMedium,
             color = Color.White
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             color = Color(0xFF003A70)
         )
     }
 }
 
 @Composable
-fun SpriteCard(
+private fun SpriteCard(
     imageUrl: String?,
     title: String
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Card(
             modifier = Modifier.size(140.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF3D7DCA)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF66A4EF)),
             shape = RoundedCornerShape(12.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
@@ -308,22 +302,10 @@ fun SpriteCard(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
             color = Color(0xFF003A70)
-
         )
     }
 }
-
-@Preview(showBackground = true, name = "SpriteCard Preview")
-@Composable
-fun SpriteCardPreview() {
-    SpriteCard(
-        imageUrl = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png",
-        title = "Front"
-    )
-}
-
-

@@ -1,4 +1,4 @@
-package com.example.pokemonlab5.network
+package com.example.pokemonlab5.data.network
 
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
