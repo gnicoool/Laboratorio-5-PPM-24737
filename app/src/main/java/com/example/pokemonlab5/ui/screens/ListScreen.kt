@@ -16,42 +16,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.pokemonlab5.network.PokemonBasic
-import com.example.pokemonlab5.network.RetrofitClient
-import kotlinx.coroutines.launch
+import com.example.pokemonlab5.data.network.PokemonBasic
+import com.example.pokemonlab5.ui.viewmodel.MainViewModel
+import com.example.pokemonlab5.ui.viewmodel.PokemonListUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListScreen(
+    viewModel: MainViewModel,
     onPokemonClick: (Int) -> Unit
 ) {
-    var pokemonList by remember { mutableStateOf<List<PokemonBasic>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-
-    fun loadPokemon() {
-        scope.launch {
-            isLoading = true
-            error = null
-            try {
-                val response = RetrofitClient.apiService.getPokemonList(limit = 100)
-                pokemonList = response.results
-            } catch (e: Exception) {
-                error = "Error al cargar Pokémon: ${e.message}"
-                e.printStackTrace()
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        loadPokemon()
-    }
+    // Uso de stateFlow para observar el view maodel
+    val uiState by viewModel.pokemonListState.collectAsState()
 
     Scaffold(
         topBar = {
@@ -59,7 +37,8 @@ fun ListScreen(
                 title = {
                     Text(
                         "Pokemon",
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.headlineSmall
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -67,12 +46,12 @@ fun ListScreen(
                     titleContentColor = Color.Black
                 ),
                 actions = {
-                    if (error != null) {
-                        IconButton(onClick = { loadPokemon() }) {
+                    if (uiState is PokemonListUiState.Error) {
+                        IconButton(onClick = { viewModel.loadPokemonList() }) {
                             Icon(
                                 Icons.Default.Refresh,
                                 contentDescription = "Reintentar",
-                                tint = Color.White
+                                tint = Color.Black
                             )
                         }
                     }
@@ -85,55 +64,85 @@ fun ListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when {
-                isLoading -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = Color(0xFFCC0000))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Cargando Pokémon...", color = Color.Gray)
-                    }
+            //Segun el estado se renderiza
+            when (val state = uiState) {
+                is PokemonListUiState.Loading -> {
+                    LoadingContent()
                 }
 
-                error != null -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = error!!,
-                            color = Color.Red,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                        Button(
-                            onClick = { loadPokemon() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFCC0000)
-                            )
-                        ) {
-                            Text("Reintentar", color = Color.White)
-                        }
-                    }
+                is PokemonListUiState.Error -> {
+                    ErrorContent(
+                        message = state.message,
+                        onRetry = { viewModel.loadPokemonList() }
+                    )
                 }
 
-                pokemonList.isNotEmpty() -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(pokemonList) { pokemon ->
-                            PokemonCard(
-                                pokemon = pokemon,
-                                onClick = { onPokemonClick(pokemon.getId()) }
-                            )
-                        }
-                    }
+                is PokemonListUiState.Success -> {
+                    PokemonListContent(
+                        pokemonList = state.pokemonList,
+                        onPokemonClick = onPokemonClick
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LoadingContent() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(color = Color(0xFFCC0000))
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Cargando Pokémon...", color = Color.Gray)
+    }
+}
+
+@Composable
+private fun ErrorContent(
+    message: String,
+    onRetry: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = message,
+            color = Color.Red,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(16.dp)
+        )
+        Button(
+            onClick = onRetry,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFCC0000)
+            )
+        ) {
+            Text("Reintentar", color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun PokemonListContent(
+    pokemonList: List<PokemonBasic>,
+    onPokemonClick: (Int) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(pokemonList) { pokemon ->
+            PokemonCard(
+                pokemon = pokemon,
+                onClick = { onPokemonClick(pokemon.getId()) }
+            )
         }
     }
 }
@@ -148,7 +157,7 @@ private fun PokemonCard(
             .fillMaxWidth()
             .height(100.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF3D7DCA)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF66A4EF)),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -174,24 +183,11 @@ private fun PokemonCard(
             ) {
                 Text(
                     text = pokemon.name.replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
     }
-}
-
-@Preview(showBackground = true, name = "PokemonCard Preview")
-@Composable
-fun PokemonCardPreview() {
-    val samplePokemon = PokemonBasic(
-        name = "pikachu",
-        url = "https://pokeapi.co/api/v2/pokemon/25/"
-    )
-    PokemonCard(
-        pokemon = samplePokemon,
-        onClick = {}
-    )
 }

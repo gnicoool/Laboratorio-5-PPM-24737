@@ -1,4 +1,4 @@
-package com.example.pokemonlab5.network
+package com.example.pokemonlab5.data.network
 
 import retrofit2.http.GET
 import retrofit2.http.Path
